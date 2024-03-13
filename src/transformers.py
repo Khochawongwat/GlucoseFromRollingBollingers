@@ -35,7 +35,7 @@ class DateTransformer(BaseTransformer):
         return X
 
 class OutlierRemover(BaseTransformer):
-    def __init__(self, train, threshold: float = 3, attribute: str = "CGM", shift = 6) -> None:
+    def __init__(self, train, threshold: float = 3, attribute: str = "CGM", shift = 1) -> None:
         self.threshold = threshold
         self.attribute = attribute
         self.shift = shift
@@ -56,7 +56,7 @@ class OutlierRemover(BaseTransformer):
         return X
 
 class MovingAverageTransformer(BaseTransformer):
-    def __init__(self, has_insulin=False, length=6, shift = 6):
+    def __init__(self, has_insulin=False, length=6, shift = 1):
         self.length = length
         self.shift = shift
         self.has_insulin = has_insulin
@@ -70,7 +70,7 @@ class MovingAverageTransformer(BaseTransformer):
         return X.dropna()
 
 class FeatureTransformer(BaseTransformer):
-    def __init__(self, train, has_insulin=False, has_meal=False, has_velo=True, shift = 6):
+    def __init__(self, train, has_insulin=False, has_meal=False, has_velo=True, shift = 1):
         self.train = train
         self.has_insulin = has_insulin
         self.has_meal = has_meal

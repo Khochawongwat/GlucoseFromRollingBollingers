@@ -23,7 +23,7 @@ def get_pipeline(train_data: pd.DataFrame):
             ("DateTransformer", DateTransformer()),
             ("OutlierRemover", OutlierRemover(train=train_data)),
             ("FeatureTransformer", FeatureTransformer(train=train_data)),
-            ("MovingAverage", MovingAverageTransformer()),
+            ("MovingAverageTransformer", MovingAverageTransformer()),
         ]
     )
     return pipe
@@ -53,15 +53,15 @@ def load_data(dir: str):
 
 def get_train_dataset(data: pd.DataFrame) -> pd.DataFrame:
     pipe = get_pipeline(data)
-    processed_data = pipe.fit_transform(data)
-
+    processed_data = pipe.fit_transform(data).dropna()
+    print(processed_data.head())
     assert processed_data.isna().sum().sum() == 0, "There are missing values in the dataset"
-    
+
     return processed_data
 
 def get_any_dataset(data: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
     pipe = get_pipeline(train)
-    processed_data = pipe.fit_transform(data)
+    processed_data = pipe.fit_transform(data).dropna()
 
     assert processed_data.isna().sum().sum() == 0, "There are missing values in the dataset"
 
@@ -70,10 +70,10 @@ def get_any_dataset(data: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
 def get_tuning_dataset(data: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
     merged = pd.concat([data, train], ignore_index=True)
     pipe = get_pipeline(train)
-    processed_data = pipe.fit_transform(merged)
+    processed_data = pipe.fit_transform(merged).dropna()
 
     assert processed_data.isna().sum().sum() == 0, "There are missing values in the dataset"
-    
+
     return processed_data
 
 def combine_keys(dataset: dict) -> pd.DataFrame:
