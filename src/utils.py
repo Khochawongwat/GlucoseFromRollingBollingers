@@ -76,11 +76,18 @@ def combine_keys(dataset: dict) -> pd.DataFrame:
     return combined 
 
 def increment_dt(df: pd.DataFrame) -> pd.DataFrame:
+    df_copy = df.copy()
+    transformer = DateTransformer()
+
+    #Convert binary columns to datetime
     df['year'] = 2028
     df['Time'] = pd.to_datetime(df[['year', 'month', 'day', 'hour', 'minute']])
-    df['Time'] = df['Time'] + pd.DateOffset(minutes=5)
-    dateTransformer = DateTransformer()
-    dateTransformer.fit_transform(df)
+
+    df.iloc[-1, df.columns.get_loc('Time')] = df.iloc[-2, df.columns.get_loc('Time')] + pd.Timedelta(minutes=5)
+
+    transformer.fit_transform(df)
+
+    #Leave the Time column as datetime because it will be needed later for cgm_velo
     df = df.drop(columns=['year'])
     return df
 
@@ -88,19 +95,22 @@ def update_last_row(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
     df_copy = df.copy()
 
     cgm_columns = [col for col in df_copy.columns if "CGM" in col]
-    for col in cgm_columns:
-        df_copy.loc[df_copy.index[-1], col] = new_value
-    df_copy["cgm_velo"] = (new_value - df_copy["CGM(1)"]) / (df_copy["Time"].shift(1).diff().astype("int64"))
     window_sizes = [i for i in range(1, len(cgm_columns) + 1)]
-    for i, column in enumerate(cgm_columns):
-        df_copy[column] = df_copy[column].rolling(window=window_sizes[i]).mean()
+
+    for i, col in enumerate(cgm_columns):
+        df_copy.loc[df_copy.index[-1], col] = new_value
+        s = df_copy.loc[df_copy.index[-2], col] * window_sizes[i] + new_value
+        df_copy.loc[df_copy.index[-1], col] = s / (window_sizes[i] + 1)
+    df_copy.loc[df_copy.index[-1], "cgm_velo"] = (new_value - df_copy.loc[df_copy.index[-2], "CGM(1)"]) / (df_copy["Time"].diff().iloc[-1].total_seconds())
 
     return df_copy
 
 def step_transform(df: pd.DataFrame, pred: float) -> pd.DataFrame:
+
+    #Add a new row to the dataframe with the new value
     T = df.copy()
-    x = increment_dt(df)
-    df = pd.concat([df, x], ignore_index = True)
-    last_row = update_last_row(df, pred).iloc[-1:, :]
-    T = pd.concat([T, last_row], ignore_index = True).drop(columns=['Time', 'year'])
+    new_row = pd.DataFrame(np.nan, index=[0], columns=T.columns)
+    T = pd.concat([T, new_row], ignore_index=True)
+    T = increment_dt(T)
+    print(T)
     return T

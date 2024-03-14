@@ -12,13 +12,13 @@ class Models:
     def __init__(self):
         self.models = {
             "Ridge": Ridge(max_iter=1000),
-            "Lasso": Lasso(max_iter=2000),
-            "Elastic Net": ElasticNet(max_iter=3000),
-            "Random Forest": RandomForestRegressor(),
-            "Gradient Boosting": GradientBoostingRegressor(),
-            "XGBoost": XGBRegressor(),
-            "LightGBM": LGBMRegressor(verbose = -1),
-            "CatBoost": AdaBoostRegressor(),
+            #"Lasso": Lasso(max_iter=2000),
+            #"Elastic Net": ElasticNet(max_iter=3000),
+            #"Random Forest": RandomForestRegressor(),
+            #"Gradient Boosting": GradientBoostingRegressor(),
+            #"XGBoost": XGBRegressor(),
+            #"LightGBM": LGBMRegressor(verbose = -1),
+            #"CatBoost": AdaBoostRegressor(),
         }
     
     def fit(self, X, y, testX = None, testY = None, eval = True):
@@ -33,13 +33,12 @@ class Models:
         forecasts = []
         ma_columns = [x for x in X.columns if "CGM" in x]
         for model_name, model in self.models.items():
-            for i in range(n):
-                prev_rows = X.iloc[-len(ma_columns):, :]
-                last_row = prev_rows.tail(1)
-                pred = model.predict(last_row)
-                new_row = step_transform(prev_rows, pred).iloc[-1:, :]
-                forecasts.append(pred)
-                X = pd.concat([X, new_row], ignore_index=True)
+            prev_rows = X.iloc[-len(ma_columns):, :]
+            last_row = prev_rows.tail(1)
+            pred = model.predict(last_row)
+            new_row = step_transform(prev_rows, pred).iloc[-1:, :]
+            forecasts.append(pred)
+            X = pd.concat([X, new_row], ignore_index=True)
         return pd.DataFrame(forecasts, columns = ["CGM"])
     
     def eval(self, model, X, y):

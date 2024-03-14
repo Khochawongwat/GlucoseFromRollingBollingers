@@ -23,10 +23,10 @@ def criterion(pred, label, plot = True):
 
 def plot_predictions(pred, label):
     sns.set_style("whitegrid")
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(4, 4))
     plt.scatter(pred, label, alpha=0.5) 
     plt.plot([min(label), max(label)], [min(label), max(label)], color='red')
-    plt.xlabel('Predictions', fontsize=14)
-    plt.ylabel('Labels', fontsize=14)
-    plt.title('Predictions vs Labels', fontsize=16)
+    plt.xlabel('Predictions', fontsize=8)
+    plt.ylabel('Labels', fontsize=8)
+    plt.title('Predictions vs Labels', fontsize=8)
     plt.show()
