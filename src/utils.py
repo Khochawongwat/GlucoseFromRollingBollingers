@@ -91,17 +91,24 @@ def increment_dt(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=['year'])
     return df
 
-def update_last_row(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
+def get_velocity(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
+    df_copy = df.copy()
+    df_copy.loc[df_copy.index[-1], 'cgm_velo'] = (new_value - df_copy.loc[df_copy.index[-2],'CGM(1)']) / (df_copy["Time"].diff().iloc[-1].total_seconds())
+    return df_copy
+
+def get_moving_average(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
     df_copy = df.copy()
 
     cgm_columns = [col for col in df_copy.columns if "CGM" in col]
+    cgm_columns.sort(key=lambda x: int(x.split('(')[1].split(')')[0]))
+
     window_sizes = [i for i in range(1, len(cgm_columns) + 1)]
 
     for i, col in enumerate(cgm_columns):
-        df_copy.loc[df_copy.index[-1], col] = new_value
-        s = df_copy.loc[df_copy.index[-2], col] * window_sizes[i] + new_value
-        df_copy.loc[df_copy.index[-1], col] = s / (window_sizes[i] + 1)
-    df_copy.loc[df_copy.index[-1], "cgm_velo"] = (new_value - df_copy.loc[df_copy.index[-2], "CGM(1)"]) / (df_copy["Time"].diff().iloc[-1].total_seconds())
+        cumulative_sum = df_copy.loc[df_copy.index[-2], col] * (window_sizes[i] - 1) + new_value
+        df_copy.loc[df_copy.index[-1], col] = cumulative_sum / window_sizes[i]
+
+    df_copy.loc[df_copy.index[-1], 'CGM(1)'] = new_value
 
     return df_copy
 
@@ -112,5 +119,6 @@ def step_transform(df: pd.DataFrame, pred: float) -> pd.DataFrame:
     new_row = pd.DataFrame(np.nan, index=[0], columns=T.columns)
     T = pd.concat([T, new_row], ignore_index=True)
     T = increment_dt(T)
-    print(T)
-    return T
+    T = get_velocity(T, pred)
+    T = get_moving_average(T, pred)
+    return T.drop(columns=['Time'])
