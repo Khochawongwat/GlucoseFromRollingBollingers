@@ -56,47 +56,27 @@ class OutlierRemover(BaseTransformer):
         return X
 
 class MovingAverageTransformer(BaseTransformer):
-    def __init__(self, has_insulin=False, length=6, shift = 1):
+    def __init__(self, length=6, shift = 1):
         self.length = length
         self.shift = shift
-        self.has_insulin = has_insulin
 
     def transform(self, X, y=None):
         assert self.length > 0, "Length must be greater than 0"
         for m in range(1, self.length + 1):
             X[f"CGM({m})"] = X["CGM"].shift(self.shift).rolling(window=m).mean()
-            if self.has_insulin:
-                X[f"insulin({m})"] = X["insulin"].shift(self.shift).rolling(window=m).mean()
         return X.dropna()
 
 class FeatureTransformer(BaseTransformer):
-    def __init__(self, train, has_insulin=False, has_meal=False, has_velo=True, shift = 1):
-        self.train = train
-        self.has_insulin = has_insulin
+    def __init__(self, has_meal=False, has_velo=True, shift = 1):
         self.has_meal = has_meal
         self.has_velo = has_velo
         self.shift = shift
         self.scaler = MinMaxScaler()
-        self.cols_to_drop = ["Time", "basal_insulin", "bolus_insulin"]
 
     def transform(self, X, y=None):
-        if self.has_insulin:
-            self.scaler.fit(self.train[["basal_insulin", "bolus_insulin"]])
-            transformed_data = self.scaler.transform(
-                X[["basal_insulin", "bolus_insulin"]]
-            )
-            X["insulin"] = np.apply_along_axis(np.sum, 1, transformed_data)
-
-        if self.has_insulin:
-            X = create_time_since_last_meal(X)
-            self.cols_to_drop.extend(["meal_time"])
-
         if self.has_velo:
             X["cgm_velo"] = X["CGM"].shift(self.shift).diff() / (
                 X["Time"].shift(self.shift).diff().astype("int64") // 1e9
             )
 
-        return X.drop(
-            self.cols_to_drop + ["is_breakfast", "is_dinner", "is_snack", "is_lunch"],
-            axis=1,
-        )
+        return X.drop(["Time"], axis=1)

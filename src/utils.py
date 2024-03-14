@@ -6,12 +6,6 @@ from transformers import *
 FEATURES = [
     "Time",
     "CGM",
-    "basal_insulin",
-    "bolus_insulin",
-    "is_breakfast",
-    "is_lunch",
-    "is_dinner",
-    "is_snack",
 ]
 
 def reduce_classes(data: pd.DataFrame) -> pd.DataFrame:
@@ -22,7 +16,7 @@ def get_pipeline(train_data: pd.DataFrame):
         [
             ("DateTransformer", DateTransformer()),
             ("OutlierRemover", OutlierRemover(train=train_data)),
-            ("FeatureTransformer", FeatureTransformer(train=train_data)),
+            ("FeatureTransformer", FeatureTransformer()),
             ("MovingAverageTransformer", MovingAverageTransformer()),
         ]
     )
@@ -79,4 +73,34 @@ def get_tuning_dataset(data: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
 def combine_keys(dataset: dict) -> pd.DataFrame:
     keys = list(dataset.keys())
     combined = pd.concat([dataset[key] for key in keys], ignore_index=True)
-    return combined
+    return combined 
+
+def increment_dt(df: pd.DataFrame) -> pd.DataFrame:
+    df['year'] = 2028
+    df['Time'] = pd.to_datetime(df[['year', 'month', 'day', 'hour', 'minute']])
+    df['Time'] = df['Time'] + pd.DateOffset(minutes=5)
+    dateTransformer = DateTransformer()
+    dateTransformer.fit_transform(df)
+    df = df.drop(columns=['year'])
+    return df
+
+def update_last_row(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
+    df_copy = df.copy()
+
+    cgm_columns = [col for col in df_copy.columns if "CGM" in col]
+    for col in cgm_columns:
+        df_copy.loc[df_copy.index[-1], col] = new_value
+    df_copy["cgm_velo"] = (new_value - df_copy["CGM(1)"]) / (df_copy["Time"].shift(1).diff().astype("int64"))
+    window_sizes = [i for i in range(1, len(cgm_columns) + 1)]
+    for i, column in enumerate(cgm_columns):
+        df_copy[column] = df_copy[column].rolling(window=window_sizes[i]).mean()
+
+    return df_copy
+
+def step_transform(df: pd.DataFrame, pred: float) -> pd.DataFrame:
+    T = df.copy()
+    x = increment_dt(df)
+    df = pd.concat([df, x], ignore_index = True)
+    last_row = update_last_row(df, pred).iloc[-1:, :]
+    T = pd.concat([T, last_row], ignore_index = True).drop(columns=['Time', 'year'])
+    return T

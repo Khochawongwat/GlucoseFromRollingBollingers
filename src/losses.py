@@ -16,7 +16,7 @@ def mspe(pred, label):
 def mse(pred, label):
     return mean_squared_error(label, pred)
 
-def criterion(pred, label, plot = False):
+def criterion(pred, label, plot = True):
     if plot:
         plot_predictions(pred, label)
     return mse(pred, label), rmse(pred, label), mspe(pred, label)
