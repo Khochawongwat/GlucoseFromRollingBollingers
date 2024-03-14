@@ -7,7 +7,8 @@ from losses import criterion
 import numpy as np
 import pandas as pd
 from utils import *
- 
+import pickle
+
 class Models:
     def __init__(self):
         self.models = {
@@ -35,10 +36,10 @@ class Models:
                     best_preds = model.predict(testX)
         return pd.DataFrame(best_preds, columns = ["pred"])
 
-    def forecast(self, X, y = None, n = 12, eval = True):        
-        ma_columns = [x for x in X.columns if "CGM" in x]
+    def forecast(self, X, y = None, n = 12, eval = True, save_model = True, path = "models/best_forecasting_model.pkl"):        
         best_rmse = np.inf
         best_forecasts = None
+        best_model = None 
         for model_name, model in self.models.items():
             forecasts = []
             for i in range(n):
@@ -57,7 +58,20 @@ class Models:
                 if rmse < best_rmse:
                     best_rmse = rmse
                     best_forecasts = forecasts
+                    best_model = model
                 print(f"{model_name} MSE: {mse}, RMSE: {rmse}, MSPE: {mspe} %")
+
+        if save_model and best_model is not None:
+            assert path is not None, "path must be provided to save the model"
+            
+            dir_name = os.path.dirname(path)
+            
+            if not os.path.exists(dir_name):
+                os.makedirs(dir_name)
+            
+            with open(path, 'wb') as f:
+                pickle.dump(best_model, f)
+
         X = X.iloc[n-1: n*2 - 1, :]
         X.reset_index(drop=True, inplace=True)
         X.loc[:, "pred"] = best_forecasts
