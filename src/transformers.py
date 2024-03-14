@@ -25,6 +25,7 @@ class DateTransformer(BaseTransformer):
         X["hour"] = X[self.attribute].dt.hour
         X["minute"] = X[self.attribute].dt.minute
         X["weekday"] = X[self.attribute].dt.weekday
+        X["year"] = X[self.attribute].dt.year
         return X
 
     def transform(self, X, y=None) -> pd.DataFrame:

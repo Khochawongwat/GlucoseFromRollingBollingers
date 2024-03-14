@@ -80,7 +80,6 @@ def increment_dt(df: pd.DataFrame) -> pd.DataFrame:
     transformer = DateTransformer()
 
     #Convert binary columns to datetime
-    df['year'] = 2028
     df['Time'] = pd.to_datetime(df[['year', 'month', 'day', 'hour', 'minute']])
 
     df.iloc[-1, df.columns.get_loc('Time')] = df.iloc[-2, df.columns.get_loc('Time')] + pd.Timedelta(minutes=5)
@@ -88,7 +87,6 @@ def increment_dt(df: pd.DataFrame) -> pd.DataFrame:
     transformer.fit_transform(df)
 
     #Leave the Time column as datetime because it will be needed later for cgm_velo
-    df = df.drop(columns=['year'])
     return df
 
 def get_velocity(df: pd.DataFrame, new_value: float) -> pd.DataFrame:

@@ -22,12 +22,18 @@ class Models:
         }
     
     def fit(self, X, y, testX = None, testY = None, eval = True):
+        best_rmse = np.inf
+        best_preds = None
         for model_name, model in tqdm(self.models.items()):
             model.fit(X, y)
             if eval:
                 assert testX is not None and testY is not None, "testX and testY must be provided for evaluation"
                 mse, rmse, mspe = self.eval(model, testX, testY)
                 print(f"{model_name} MSE: {mse}, RMSE: {rmse}, MSPE: {mspe} %")
+                if rmse < best_rmse:
+                    best_rmse = rmse
+                    best_preds = model.predict(testX)
+        return pd.DataFrame(best_preds, columns = ["pred"])
 
     def forecast(self, X, y = None, n = 12, eval = True):        
         ma_columns = [x for x in X.columns if "CGM" in x]
@@ -36,21 +42,26 @@ class Models:
         for model_name, model in self.models.items():
             forecasts = []
             for i in range(n):
-                prev_rows = X.iloc[-len(ma_columns):, :]
-                last_row = prev_rows.tail(1)
+                prev_rows = X.iloc[-n:, :]
+                last_row = prev_rows.iloc[-1:, :]
                 pred = model.predict(last_row)
                 new_row = step_transform(prev_rows, pred).iloc[-1:, :]
                 forecasts.append(pred)
                 X = pd.concat([X, new_row], ignore_index=True)
             forecasts = pd.DataFrame(forecasts, columns = ["CGM"])
+
             if eval:
                 assert len(y) > 0, "y must be provided for evaluation"
                 assert len(y) == len(forecasts), "y and forecasts must have the same length"
-                mse, rmse, mspe = criterion(forecasts, y)
+                mse, rmse, mspe = criterion(forecasts, y, plot = True)
                 if rmse < best_rmse:
                     best_rmse = rmse
                     best_forecasts = forecasts
-        return X.iloc[-n:, :], best_forecasts
+                print(f"{model_name} MSE: {mse}, RMSE: {rmse}, MSPE: {mspe} %")
+        X = X.iloc[n-1: n*2 - 1, :]
+        X.reset_index(drop=True, inplace=True)
+        X.loc[:, "pred"] = best_forecasts
+        return X
     
     def eval(self, model, X, y):
         return criterion(model.predict(X), y)
