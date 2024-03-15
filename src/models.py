@@ -71,6 +71,6 @@ class Models:
         X.reset_index(drop=True, inplace=True)
         X.loc[:, "pred"] = best_forecasts
         return X
-    
+
     def eval(self, model, X, y):
         return criterion(model.predict(X), y)
