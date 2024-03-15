@@ -12,15 +12,10 @@ import pickle
 class Models:
     def __init__(self):
         self.models = {
-            #"Ridge": Ridge(max_iter=1000),
-            #"Lasso": Lasso(max_iter=2000),
-            #"Elastic Net": ElasticNet(max_iter=3000),
             #"Random Forest": RandomForestRegressor(),
             #"Gradient Boosting": GradientBoostingRegressor(),
             "XGBoost": XGBRegressor(),
-            "LightGBM": LGBMRegressor(verbose = -1),
-            #"CatBoost": AdaBoostRegressor(),
-        }
+            "LightGBM": LGBMRegressor(verbose = -1),        }
     
     def fit(self, X, y, testX = None, testY = None, eval = True):
         best_rmse = np.inf
