@@ -8,6 +8,17 @@ FEATURES = [
     "CGM",
 ]
 
+def weighted_moving_average(X, period, weight_factor):
+    weights = np.arange(1, period + 1) * weight_factor
+    return X.rolling(period).apply(lambda x: np.sum(weights * x) / np.sum(weights), raw=True)
+
+def hull_moving_average(X, period):
+    sqrt_period = int(np.sqrt(period))
+    wma_half = weighted_moving_average(X, int(period / 2), 2)
+    wma_full = weighted_moving_average(X, period, 1)
+    diff = 2 * wma_half - wma_full
+    return weighted_moving_average(diff, sqrt_period, 1)
+
 def reduce_classes(data: pd.DataFrame) -> pd.DataFrame:
     return data[FEATURES]
 
@@ -111,8 +122,6 @@ def get_moving_average(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
     return df_copy
 
 def step_transform(df: pd.DataFrame, pred: float) -> pd.DataFrame:
-
-    #Add a new row to the dataframe with the new value
     T = df.copy()
     new_row = pd.DataFrame(np.nan, index=[0], columns=T.columns)
     T = pd.concat([T, new_row], ignore_index=True)
