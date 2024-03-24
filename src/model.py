@@ -2,11 +2,11 @@ import os
 import pickle
 import time
 import warnings
-from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping
+from lightgbm import LGBMClassifier, LGBMRegressor
 from sklearn.linear_model import Ridge
 
 import optuna
-from sklearn.model_selection import GridSearchCV, cross_val_score, learning_curve
+from sklearn.model_selection import cross_val_score, learning_curve
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -16,10 +16,10 @@ from losses import criterion
 import numpy as np
 import pandas as pd
 
-from utils import fit_navigator_model, get_navigator_prediction
+from utils import fit_navigator_model, get_navigator_prediction, step_transform
 
 class HybridModel:
-    def __init__(self):
+    def __init__(self, use_navigator = True):
         self.model = {
             "Base": LGBMRegressor(verbose = -1),
             "Residuals": Ridge(),
@@ -31,7 +31,8 @@ class HybridModel:
             "Median": LGBMRegressor(objective="quantile", alpha=0.5, verbose = -1),
             "Upper": LGBMRegressor(objective="quantile", alpha=0.95, verbose = -1)
         }
-    
+        self.use_navigator = use_navigator
+
     def optimize_lgbm_params(self, X, y, prune = True, n_trials = 10, cv = 5, verbose = 1):
         print("Optimizing Base LGBM parameters...")
         warnings.filterwarnings('ignore', category=UserWarning)
@@ -120,10 +121,10 @@ class HybridModel:
 
         return ridge_best_params
     
-    def fit(self, X, y, testX = None,  testY = None, eval = True, tune = True, fit_navigator = True) -> None:
+    def fit(self, X, y, testX = None,  testY = None, eval = True, tune = True) -> None:
         assert not (eval == True and (testX is None and testY is None)), "Testset is required for evaluation."
     
-        if fit_navigator:
+        if self.use_navigator:
             self.model["Navigator"] = fit_navigator_model(self.model["Navigator"], X, y)
             X["direction"] = get_navigator_prediction(self.model["Navigator"], X)
             
@@ -155,3 +156,20 @@ class HybridModel:
             total_pred = base_pred + residuals_pred
             print(f"Base: {criterion(base_pred, testY)}")
             print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {100 -  abs(criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")
+
+    def forecast(self, X, n_steps = 1, eval = True, save_model = True, return_X = True) -> np.array:
+        assert n_steps > 0, "n_steps must be greater than 0"
+        assert len(X) > 0 or not (X is None), "X must have at least one row and not be None"
+        
+        forecasts = []
+        for _ in range(n_steps):
+            last_row = X.iloc[-1:, :]
+            base_pred = self.model["Base"].predict(last_row)
+            residuals_pred = self.model["Residuals"].predict(last_row)
+            total_pred = base_pred + residuals_pred
+            forecasts.append(total_pred)
+            new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"]).iloc[-1:, :]
+            new_row.index = [X.index[-1] + 1]
+            X = pd.concat([X, new_row])
+        forecasts = np.array(forecasts).flatten()
+        return X if return_X else forecasts
