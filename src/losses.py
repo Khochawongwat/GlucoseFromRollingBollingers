@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -17,7 +18,8 @@ def mse(pred, label):
     return mean_squared_error(label, pred)
 
 def criterion(pred, label, plot = False):
-    label.reset_index(drop=True, inplace=True)
+    if isinstance(label, pd.Series) or isinstance(label, pd.DataFrame):
+        label.reset_index(drop=True, inplace=True)
     if plot:
         plot_predictions(pred, label)
     return mse(pred, label), rmse(pred, label), mspe(pred, label)

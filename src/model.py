@@ -27,9 +27,9 @@ class HybridModel:
         }
         
         self.quantile = {
-            "Lower": LGBMRegressor(objective="quantile", alpha=0.05, verbose = -1),
+            "Lower": LGBMRegressor(objective="quantile", alpha=0.01, verbose = -1),
             "Median": LGBMRegressor(objective="quantile", alpha=0.5, verbose = -1),
-            "Upper": LGBMRegressor(objective="quantile", alpha=0.95, verbose = -1)
+            "Upper": LGBMRegressor(objective="quantile", alpha=0.99, verbose = -1)
         }
         self.use_navigator = use_navigator
 
@@ -141,6 +141,11 @@ class HybridModel:
             self.model["Residuals"].set_params(**ridge_base_params)
 
         self.model["Base"].fit(X, y)
+
+        self.quantile["Lower"].fit(X, y)
+        self.quantile["Median"].fit(X, y)
+        self.quantile["Upper"].fit(X, y)
+
         self.model["Residuals"].fit(X, y - self.model["Base"].predict(X))
 
         print(f"Base fitted with columns: {X.columns}")
@@ -157,19 +162,34 @@ class HybridModel:
             print(f"Base: {criterion(base_pred, testY)}")
             print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {100 -  abs(criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")
 
-    def forecast(self, X, n_steps = 1, eval = True, save_model = True, return_X = True) -> np.array:
+    def forecast(self, X, n_steps = 1, return_X = True, use_confi = True) -> np.array:
         assert n_steps > 0, "n_steps must be greater than 0"
         assert len(X) > 0 or not (X is None), "X must have at least one row and not be None"
         
         forecasts = []
-        for _ in range(n_steps):
+        confi_forecasts = {"Lower": [], "Median": [], "Upper": []}
+        for _ in tqdm(range(n_steps), "Forecasting"):
             last_row = X.iloc[-1:, :]
             base_pred = self.model["Base"].predict(last_row)
             residuals_pred = self.model["Residuals"].predict(last_row)
             total_pred = base_pred + residuals_pred
             forecasts.append(total_pred)
+
+            if use_confi:
+                for quantile in ["Lower", "Median", "Upper"]:
+                    confi_pred = self.quantile[quantile].predict(last_row)
+                    confi_forecasts[quantile].append(confi_pred)
+
             new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"]).iloc[-1:, :]
             new_row.index = [X.index[-1] + 1]
             X = pd.concat([X, new_row])
+        
         forecasts = np.array(forecasts).flatten()
-        return X if return_X else forecasts
+
+        if use_confi:
+            for quantile in ["Lower", "Median", "Upper"]:
+                confi_forecasts[quantile] = np.array(confi_forecasts[quantile]).flatten()
+
+        result = {"X": X, "forecasts": forecasts, "confi_forecasts": confi_forecasts} if return_X else {"forecasts": forecasts, "confi_forecasts": confi_forecasts}
+
+        return result
