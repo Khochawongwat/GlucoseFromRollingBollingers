@@ -78,17 +78,30 @@ class FeatureTransformer(BaseTransformer):
         self.std = std
         self.length = length
 
-    def transform(self, X, y=None):
-        X["cgm_velo"] = X["CGM"].shift(self.shift).diff() / (
-            X["Time"].shift(self.shift).diff().astype("int64") // 1e9
-        )
+    def calculate_velocity(self, X):
+        return X["CGM"].shift(self.shift).diff() / (X["Time"].shift(self.shift).diff().astype("int64") // 1e9)
 
-        X['change']  = X['CGM'].shift(self.shift) - X['CGM'].shift(self.shift + 1)
+    def calculate_change(self, X):
+        return X['CGM'].shift(self.shift) - X['CGM'].shift(self.shift + 1)
 
+    def calculate_bands(self, X):
         rolling_mean = X["CGM"].shift(self.shift).rolling(window=self.window).mean()
         rolling_std = X["CGM"].shift(self.shift).rolling(window=self.window).std()
-        
-        X['upper_band'] = rolling_mean + (rolling_std * self.std)
-        X['lower_band'] = rolling_mean - (rolling_std * self.std)
+        upper_band = rolling_mean + (rolling_std * self.std)
+        lower_band = rolling_mean - (rolling_std * self.std)
+        return upper_band, lower_band
 
+    def calculate_extreme_CGM(self, X):
+        quantiles = [0.80, 0.85, 0.90, 0.95]
+        for quantile in quantiles:
+            high_quantile = X['CGM'].shift(self.shift).quantile(quantile)
+            low_quantile = X['CGM'].shift(self.shift).quantile(1 - quantile)
+            X[f'extreme_CGM_{int(quantile * 100)}'] = ((X['CGM'] > high_quantile) | (X['CGM'] < low_quantile)).astype(int)
+        return X
+
+    def transform(self, X, y=None):
+        X["cgm_velo"] = self.calculate_velocity(X)
+        X['change'] = self.calculate_change(X)
+        X['upper_band'], X['lower_band'] = self.calculate_bands(X)
+        X = self.calculate_extreme_CGM(X)
         return X.drop(["Time"], axis=1)

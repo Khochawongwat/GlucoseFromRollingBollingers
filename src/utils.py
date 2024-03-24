@@ -77,7 +77,6 @@ def combine_keys(dataset: dict) -> pd.DataFrame:
     return combined 
 
 def increment_dt(df: pd.DataFrame) -> pd.DataFrame:
-    df_copy = df.copy()
     transformer = DateTransformer()
 
     #Convert binary columns to datetime
@@ -119,3 +118,46 @@ def step_transform(df: pd.DataFrame, pred: float) -> pd.DataFrame:
     T = get_velocity(T, pred)
     T = get_moving_average(T, pred)
     return T.drop(columns=['Time'])
+
+def fit_navigator_model(model, X, y):
+    X_copy = X.copy()
+    y_copy = y.copy()
+
+    X_copy = create_navigation_features(X_copy)
+    y_copy = calculate_direction(y_copy)
+    X_copy = get_previous_direction(X_copy, y_copy)
+
+    model.fit(X_copy, y_copy)
+    return model
+
+def get_navigator_prediction(model, X):
+    X_copy = X.copy()
+    X_copy = create_navigation_features(X_copy)
+    if "CGM(1)" in X_copy.columns:
+        X_copy = get_previous_direction(X_copy, X_copy["CGM(1)"])
+    else:
+        X_copy = get_previous_direction(X_copy, X_copy["wCGM(1)"])
+    y_pred = model.predict(X_copy)
+    return y_pred
+
+def calculate_direction(y):
+    y_shifted = y.copy().shift(1)
+    y_diff = y_shifted.diff()
+    nY = y_diff.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    return nY
+
+def create_navigation_features(X):
+    
+    X["hour_sin"] = np.sin(2 * np.pi * X["hour"] / 23.0)
+    X["hour_cos"] = np.cos(2 * np.pi * X["hour"] / 23.0)
+
+    X["minute_sin"] = np.sin(2 * np.pi * X["minute"] / 59.0)
+    X["minute_cos"] = np.cos(2 * np.pi * X["minute"] / 59.0)
+
+    return X
+
+def get_previous_direction(X, y):
+    X["prev_direction"] = y.shift(1)
+    X["prev_direction"] = X["prev_direction"].fillna('steady')
+    X["prev_direction"] = X["prev_direction"].map({'steady': 0, 'up': 1, 'down': -1})
+    return X

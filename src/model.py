@@ -2,7 +2,7 @@ import os
 import pickle
 import time
 import warnings
-from lightgbm import LGBMRegressor, early_stopping
+from lightgbm import LGBMClassifier, LGBMRegressor, early_stopping
 from sklearn.linear_model import Ridge
 
 import optuna
@@ -13,12 +13,17 @@ from tqdm import tqdm
 
 from losses import criterion
 
+import numpy as np
+import pandas as pd
+
+from utils import fit_navigator_model, get_navigator_prediction
 
 class HybridModel:
     def __init__(self):
         self.model = {
             "Base": LGBMRegressor(verbose = -1),
             "Residuals": Ridge(),
+            "Navigator": LGBMClassifier(verbose = -1)
         }
         
         self.quantile = {
@@ -115,9 +120,13 @@ class HybridModel:
 
         return ridge_best_params
     
-    def fit(self, X, y, testX = None,  testY = None, eval = True, tune = True) -> None:
+    def fit(self, X, y, testX = None,  testY = None, eval = True, tune = True, fit_navigator = True) -> None:
         assert not (eval == True and (testX is None and testY is None)), "Testset is required for evaluation."
-        
+    
+        if fit_navigator:
+            self.model["Navigator"] = fit_navigator_model(self.model["Navigator"], X, y)
+            X["direction"] = get_navigator_prediction(self.model["Navigator"], X)
+            
         if tune:
             lgbm_base_params = self.optimize_lgbm_params(X, y)
             if os.path.exists("params"):
@@ -129,15 +138,20 @@ class HybridModel:
             
             self.model["Base"].set_params(**lgbm_base_params)
             self.model["Residuals"].set_params(**ridge_base_params)
-        
+
         self.model["Base"].fit(X, y)
         self.model["Residuals"].fit(X, y - self.model["Base"].predict(X))
 
+        print(f"Base fitted with columns: {X.columns}")
+
         if eval:
             assert (testX is not None and testY is not None), "testX and testY must be provided for evaluation"
+
+            testX['direction'] = get_navigator_prediction(self.model["Navigator"], testX)
             
             base_pred = self.model["Base"].predict(testX)
             residuals_pred = self.model["Residuals"].predict(testX)
+
             total_pred = base_pred + residuals_pred
             print(f"Base: {criterion(base_pred, testY)}")
             print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {100 -  abs(criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")
