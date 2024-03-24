@@ -55,7 +55,7 @@ class OutlierRemover(BaseTransformer):
         return X
 
 class MovingAverageTransformer(BaseTransformer):
-    def __init__(self, length=6, shift = 1, weighted = True):
+    def __init__(self, length= 6, shift = 1, weighted = True):
         self.length = length
         self.shift = shift
         self.weighted = weighted
