@@ -203,7 +203,7 @@ def get_navigator_prediction(model, X):
 def calculate_direction(y):
     y_shifted = y.copy().shift(1)
     y_diff = y_shifted.diff()
-    nY = y_diff.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    nY = y_diff.apply(lambda x: 1 if x >= 0 else -1)
     return nY
 
 def create_navigation_features(X):
