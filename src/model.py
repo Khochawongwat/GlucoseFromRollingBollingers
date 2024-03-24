@@ -168,6 +168,7 @@ class HybridModel:
         
         forecasts = []
         confi_forecasts = {"Lower": [], "Median": [], "Upper": []}
+        
         for _ in tqdm(range(n_steps), "Forecasting"):
             last_row = X.iloc[-1:, :]
             base_pred = self.model["Base"].predict(last_row)
