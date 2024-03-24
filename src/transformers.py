@@ -1,11 +1,8 @@
-from sklearn.discriminant_analysis import StandardScaler
-from sklearn.preprocessing import MinMaxScaler, PolynomialFeatures
+from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
 from sklearn.base import TransformerMixin
-from features import create_time_since_last_meal
-from utils import hull_moving_average
-
+from utils import *
 class BaseTransformer(TransformerMixin):
     def fit(self, X, y=None):
         return self
@@ -58,14 +55,19 @@ class OutlierRemover(BaseTransformer):
         return X
 
 class MovingAverageTransformer(BaseTransformer):
-    def __init__(self, length=6, shift = 1):
+    def __init__(self, length=6, shift = 1, weighted = True):
         self.length = length
         self.shift = shift
+        self.weighted = weighted
 
     def transform(self, X, y=None):
         assert self.length > 0, "Length must be greater than 0"
         for m in range(1, self.length + 1):
-            X[f"CGM({m})"] = X["CGM"].shift(self.shift).rolling(window=m).mean()
+            if self.weighted:
+                weights = np.arange(1, m + 1)
+                X[f"wCGM({m})"] = X["CGM"].shift(self.shift).rolling(window=m).apply(lambda x: np.average(x, weights=weights[::-1]), raw=True)
+            else:
+                X[f"CGM({m})"] = X["CGM"].shift(self.shift).rolling(window=m).mean()
         return X.dropna()
 
 class FeatureTransformer(BaseTransformer):
@@ -88,5 +90,5 @@ class FeatureTransformer(BaseTransformer):
         
         X['upper_band'] = rolling_mean + (rolling_std * self.std)
         X['lower_band'] = rolling_mean - (rolling_std * self.std)
-    
+
         return X.drop(["Time"], axis=1)

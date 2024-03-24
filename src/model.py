@@ -140,4 +140,4 @@ class HybridModel:
             residuals_pred = self.model["Residuals"].predict(testX)
             total_pred = base_pred + residuals_pred
             print(f"Base: {criterion(base_pred, testY)}")
-            print(f"Base + Residuals: {criterion(total_pred, testY)}")
+            print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {100 -  abs(criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")

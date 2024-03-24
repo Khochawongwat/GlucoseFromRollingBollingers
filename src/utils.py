@@ -1,23 +1,13 @@
 import os
 import pandas as pd
 from sklearn.pipeline import Pipeline
-from transformers import *
+import numpy as np
+from transformers import DateTransformer, OutlierRemover, FeatureTransformer, MovingAverageTransformer
 
 FEATURES = [
     "Time",
     "CGM",
 ]
-
-def weighted_moving_average(X, period, weight_factor):
-    weights = np.arange(1, period + 1) * weight_factor
-    return X.rolling(period).apply(lambda x: np.sum(weights * x) / np.sum(weights), raw=True)
-
-def hull_moving_average(X, period):
-    sqrt_period = int(np.sqrt(period))
-    wma_half = weighted_moving_average(X, int(period / 2), 2)
-    wma_full = weighted_moving_average(X, period, 1)
-    diff = 2 * wma_half - wma_full
-    return weighted_moving_average(diff, sqrt_period, 1)
 
 def reduce_classes(data: pd.DataFrame) -> pd.DataFrame:
     return data[FEATURES]
