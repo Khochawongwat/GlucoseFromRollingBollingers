@@ -165,7 +165,7 @@ class HybridModel:
             print(f"Base: {criterion(base_pred, testY)}")
             print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {100 -  abs(criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")
 
-    def forecast(self, X, n_steps = 1, return_X = True, use_confi = True) -> np.array:
+    def forecast(self, X, n_steps = 1, return_X = True, use_confi = True, navigator_weight = 1) -> np.array:
         assert n_steps > 0, "n_steps must be greater than 0"
         assert len(X) > 0 or not (X is None), "X must have at least one row and not be None"
         
@@ -185,9 +185,9 @@ class HybridModel:
                     confi_forecasts[quantile].append(confi_pred)
 
             if self.extreme_values:
-                new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"], extreme_values=self.extreme_values).iloc[-1:, :]
+                new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"], extreme_values=self.extreme_values, navigator_weight = navigator_weight).iloc[-1:, :]
             else:
-                new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"]).iloc[-1:, :]
+                new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"], navigator_weight= navigator_weight).iloc[-1:, :]
 
             new_row.index = [X.index[-1] + 1]
             X = pd.concat([X, new_row])

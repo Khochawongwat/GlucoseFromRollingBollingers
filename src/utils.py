@@ -167,7 +167,7 @@ def calculate_bands(X, shift=1, window=24, std=3):
     X["lower_band"] = lower_band
     return X
 
-def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model, extreme_values = None) -> pd.DataFrame:
+def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model, extreme_values = None, navigator_weight = 1) -> pd.DataFrame:
     assert not (use_navigation is None and model is None), "Cannot use navigation without a fitted model"
     T = df.copy()
     new_row = pd.DataFrame(np.nan, index=[0], columns=T.columns)
@@ -181,7 +181,7 @@ def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model, e
         TT = T.copy()
         TT = create_navigation_features(TT)
         TT.drop(columns=["Time", "direction"], inplace=True)
-        T["direction"] = get_navigator_prediction(model, TT)
+        T["direction"] = get_navigator_prediction(model, TT) * -navigator_weight
     T, _ = calculate_extreme_CGM(T, extreme_values = extreme_values)
     try:
         T.drop(columns=["Time"], inplace=True)
