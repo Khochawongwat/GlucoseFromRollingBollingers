@@ -16,7 +16,7 @@ from losses import criterion
 import numpy as np
 import pandas as pd
 
-from utils import fit_navigator_model, get_navigator_prediction, step_transform
+from utils import calculate_extreme_CGM, fit_navigator_model, get_navigator_prediction, step_transform
 
 class HybridModel:
     def __init__(self, use_navigator = True):
@@ -31,6 +31,7 @@ class HybridModel:
             "Median": LGBMRegressor(objective="quantile", alpha=0.5, verbose = -1),
             "Upper": LGBMRegressor(objective="quantile", alpha=0.99, verbose = -1)
         }
+        self.extreme_values = None
         self.use_navigator = use_navigator
 
     def optimize_lgbm_params(self, X, y, prune = True, n_trials = 10, cv = 5, verbose = 1):
@@ -123,7 +124,9 @@ class HybridModel:
     
     def fit(self, X, y, testX = None,  testY = None, eval = True, tune = True) -> None:
         assert not (eval == True and (testX is None and testY is None)), "Testset is required for evaluation."
-    
+
+        _, self.extreme_values = calculate_extreme_CGM(X.copy())
+
         if self.use_navigator:
             self.model["Navigator"] = fit_navigator_model(self.model["Navigator"], X, y)
             X["direction"] = get_navigator_prediction(self.model["Navigator"], X)
@@ -181,7 +184,11 @@ class HybridModel:
                     confi_pred = self.quantile[quantile].predict(last_row)
                     confi_forecasts[quantile].append(confi_pred)
 
-            new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"]).iloc[-1:, :]
+            if self.extreme_values:
+                new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"], extreme_values=self.extreme_values).iloc[-1:, :]
+            else:
+                new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"]).iloc[-1:, :]
+
             new_row.index = [X.index[-1] + 1]
             X = pd.concat([X, new_row])
         

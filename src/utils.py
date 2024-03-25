@@ -119,8 +119,12 @@ def get_moving_average(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
 
     return df_copy
 
-def calculate_extreme_CGM(X, shift=1):
+def calculate_extreme_CGM(X, shift = 1, extreme_values=None):
     quantiles = [0.80, 0.85, 0.90, 0.95]
+    
+    if extreme_values is None:
+        extreme_values = {}
+
     for quantile in quantiles:
         if 'CGM(1)' in X.columns:
             high_quantile = X['CGM(1)'].shift(shift).quantile(quantile)
@@ -130,9 +134,16 @@ def calculate_extreme_CGM(X, shift=1):
             high_quantile = X['wCGM(1)'].shift(shift).quantile(quantile)
             low_quantile = X['wCGM(1)'].shift(shift).quantile(1 - quantile)
             X[f'extreme_CGM_{int(quantile * 100)}'] = ((X['wCGM(1)'] > high_quantile) | (X['wCGM(1)'] < low_quantile)).astype(int)
-    return X
+        
+        if f'extreme_CGM_{int(quantile * 100)}' in extreme_values:
+            old_low_quantile, old_high_quantile = extreme_values[f'extreme_CGM_{int(quantile * 100)}']
+            extreme_values[f'extreme_CGM_{int(quantile * 100)}'] = (min(old_low_quantile, low_quantile), max(old_high_quantile, high_quantile))
+        else:
+            extreme_values[f'extreme_CGM_{int(quantile * 100)}'] = (low_quantile, high_quantile)
 
-def calculate_change(X, shift=1):
+    return X, extreme_values
+
+def calculate_change(X, shift= 1):
     if 'CGM(1)' in X.columns:
         change = X['CGM(1)'].shift(shift) - X['CGM(1)'].shift(shift + 1)
     else:
@@ -156,7 +167,7 @@ def calculate_bands(X, shift=1, window=24, std=3):
     X["lower_band"] = lower_band
     return X
 
-def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model) -> pd.DataFrame:
+def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model, extreme_values = None) -> pd.DataFrame:
     assert not (use_navigation is None and model is None), "Cannot use navigation without a fitted model"
     T = df.copy()
     new_row = pd.DataFrame(np.nan, index=[0], columns=T.columns)
@@ -171,7 +182,7 @@ def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model) -
         TT = create_navigation_features(TT)
         TT.drop(columns=["Time", "direction"], inplace=True)
         T["direction"] = get_navigator_prediction(model, TT)
-    T = calculate_extreme_CGM(T)
+    T, _ = calculate_extreme_CGM(T, extreme_values = extreme_values)
     try:
         T.drop(columns=["Time"], inplace=True)
     except:
@@ -219,11 +230,6 @@ def create_navigation_features(X):
     X['is_night'] = X['hour'].apply(lambda x: 1 if x >= 20 else 0)
     X['is_afternoon'] = X['hour'].apply(lambda x: 1 if x >= 12 and x < 20 else 0)
     X['is_evening'] = X['hour'].apply(lambda x: 1 if x >= 16 else 0)
-    X['is_late_night'] = X['hour'].apply(lambda x: 1 if x < 4 else 0)
-    X['is_early_morning'] = X['hour'].apply(lambda x: 1 if x >= 4 and x < 8 else 0)
-    X['is_late_morning'] = X['hour'].apply(lambda x: 1 if x >= 8 and x < 12 else 0)
-    X['is_early_afternoon'] = X['hour'].apply(lambda x: 1 if x >= 12 and x < 16 else 0)
-
     return X
 
 def get_previous_direction(X, y):
