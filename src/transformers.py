@@ -100,6 +100,7 @@ class FeatureTransformer(BaseTransformer):
         return X
 
     def transform(self, X, y=None):
+        
         X["cgm_velo"] = self.calculate_velocity(X)
         X['change'] = self.calculate_change(X)
         X['upper_band'], X['lower_band'] = self.calculate_bands(X)

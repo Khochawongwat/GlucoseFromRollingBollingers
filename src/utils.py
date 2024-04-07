@@ -17,8 +17,8 @@ def get_pipeline(train_data: pd.DataFrame):
         [
             ("DateTransformer", DateTransformer()),
             ("OutlierRemover", OutlierRemover(train=train_data)),
-            ("FeatureTransformer", FeatureTransformer()),
             ("MovingAverageTransformer", MovingAverageTransformer()),
+            ("FeatureTransformer", FeatureTransformer()),
         ]
     )
     return pipe
@@ -120,8 +120,7 @@ def get_moving_average(df: pd.DataFrame, new_value: float) -> pd.DataFrame:
     return df_copy
 
 def calculate_extreme_CGM(X, shift = 1, extreme_values=None):
-    quantiles = [0.80, 0.85, 0.90, 0.95]
-    
+    quantiles =  [0.80, 0.85, 0.90, 0.95]
     if extreme_values is None:
         extreme_values = {}
 
@@ -181,7 +180,7 @@ def step_transform(df: pd.DataFrame, pred: float, use_navigation: bool, model, e
         TT = T.copy()
         TT = create_navigation_features(TT)
         TT.drop(columns=["Time", "direction"], inplace=True)
-        T["direction"] = get_navigator_prediction(model, TT) * -navigator_weight
+        T["direction"] = get_navigator_prediction(model, TT) * navigator_weight
     T, _ = calculate_extreme_CGM(T, extreme_values = extreme_values)
     try:
         T.drop(columns=["Time"], inplace=True)

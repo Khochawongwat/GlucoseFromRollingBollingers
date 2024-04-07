@@ -16,14 +16,14 @@ from losses import criterion
 import numpy as np
 import pandas as pd
 
-from utils import calculate_extreme_CGM, fit_navigator_model, get_navigator_prediction, step_transform
+from utils import calculate_bands, calculate_extreme_CGM, fit_navigator_model, get_navigator_prediction, step_transform
 
 class HybridModel:
-    def __init__(self, use_navigator = True):
+    def __init__(self, use_navigator = True, use_adaptive_weight = True):
         self.model = {
             "Base": LGBMRegressor(verbose = -1),
             "Residuals": Ridge(),
-            "Navigator": LGBMClassifier(verbose = -1)
+            "Navigator": LGBMClassifier(verbose = -1),
         }
         
         self.quantile = {
@@ -33,6 +33,7 @@ class HybridModel:
         }
         self.extreme_values = None
         self.use_navigator = use_navigator
+        self.use_adaptive_weight = use_adaptive_weight
 
     def optimize_lgbm_params(self, X, y, prune = True, n_trials = 10, cv = 5, verbose = 1):
         print("Optimizing Base LGBM parameters...")
@@ -111,8 +112,6 @@ class HybridModel:
 
         with open(f'params/ridge_best_params_{time.time()}.pkl', 'wb') as f:
             pickle.dump(ridge_best_params, f)
-        
-        print(ridge_best_params)
 
         ridge_best = Ridge(**ridge_best_params)
         ridge_best.fit(X, y)
@@ -127,10 +126,26 @@ class HybridModel:
 
         _, self.extreme_values = calculate_extreme_CGM(X.copy())
 
+        self.quantile["Lower"].fit(X, y)
+        self.quantile["Median"].fit(X, y)
+        self.quantile["Upper"].fit(X, y)
+
         if self.use_navigator:
             self.model["Navigator"] = fit_navigator_model(self.model["Navigator"], X, y)
+            T = X.copy()
             X["direction"] = get_navigator_prediction(self.model["Navigator"], X)
-            
+
+        if self.use_adaptive_weight:
+            median = self.quantile["Median"].predict(T)
+
+            center = T['upper_band'] - (T['upper_band'] - T['lower_band']) / 2
+
+            center_distance = abs(center - median)
+
+            wt = 1 + (1 / (center_distance  + 1e-10))
+
+            X["direction"] = X["direction"] * wt
+
         if tune:
             lgbm_base_params = self.optimize_lgbm_params(X, y)
             if os.path.exists("params"):
@@ -145,10 +160,6 @@ class HybridModel:
 
         self.model["Base"].fit(X, y)
 
-        self.quantile["Lower"].fit(X, y)
-        self.quantile["Median"].fit(X, y)
-        self.quantile["Upper"].fit(X, y)
-
         self.model["Residuals"].fit(X, y - self.model["Base"].predict(X))
 
         print(f"Base fitted with columns: {X.columns}")
@@ -156,14 +167,14 @@ class HybridModel:
         if eval:
             assert (testX is not None and testY is not None), "testX and testY must be provided for evaluation"
 
-            testX['direction'] = get_navigator_prediction(self.model["Navigator"], testX)
+            testX['direction'] = get_navigator_prediction(self.model["Navigator"], testX).astype(float)
             
             base_pred = self.model["Base"].predict(testX)
             residuals_pred = self.model["Residuals"].predict(testX)
 
             total_pred = base_pred + residuals_pred
             print(f"Base: {criterion(base_pred, testY)}")
-            print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {100 -  abs(criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")
+            print(f"Base + Residuals: {criterion(total_pred, testY)} Change: {-(100 -  criterion(base_pred, testY)[1] - criterion(total_pred, testY)[1] / criterion(base_pred, testY)[1] * 100)}%")
 
     def forecast(self, X, n_steps = 1, return_X = True, use_confi = True, navigator_weight = 1) -> np.array:
         assert n_steps > 0, "n_steps must be greater than 0"
@@ -172,8 +183,9 @@ class HybridModel:
         forecasts = []
         confi_forecasts = {"Lower": [], "Median": [], "Upper": []}
         
-        for _ in tqdm(range(n_steps), "Forecasting"):
+        for _ in range(n_steps):
             last_row = X.iloc[-1:, :]
+
             base_pred = self.model["Base"].predict(last_row)
             residuals_pred = self.model["Residuals"].predict(last_row)
             total_pred = base_pred + residuals_pred
@@ -181,8 +193,15 @@ class HybridModel:
 
             if use_confi:
                 for quantile in ["Lower", "Median", "Upper"]:
-                    confi_pred = self.quantile[quantile].predict(last_row)
+                    confi_pred = self.quantile[quantile].predict(last_row.drop(columns = ["direction"]))
                     confi_forecasts[quantile].append(confi_pred)
+
+            if self.use_adaptive_weight:
+                median = self.quantile["Median"].predict(last_row.drop(columns = ["direction"]))
+                center = last_row['upper_band'] - (last_row['upper_band'] - last_row['lower_band']) / 2
+                center_distance = abs(center - median)
+                wt = 1 + 3 * (1 / (center_distance  + 1e-10))
+                last_row.loc[:, "direction"] = last_row.loc[:, "direction"].astype(float) * wt
 
             if self.extreme_values:
                 new_row = step_transform(X, total_pred, self.use_navigator, self.model["Navigator"], extreme_values=self.extreme_values, navigator_weight = navigator_weight).iloc[-1:, :]
