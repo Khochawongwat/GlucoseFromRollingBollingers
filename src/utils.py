@@ -1,8 +1,10 @@
 import os
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 import numpy as np
 from transformers import DateTransformer, OutlierRemover, FeatureTransformer, MovingAverageTransformer
+import lightgbm
 
 FEATURES = [
     "Time",
@@ -27,48 +29,42 @@ def load_data(dir: str):
     assert os.path.isdir(dir), f"{dir} is not a valid directory"
     files = [f for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
     print(f"Found {len(files)} files in {dir}")
-    dataset = {
-        "train": [],
-        "test": [],
-    }
+    dataset = {}
     for file in files:
         try:
             df = pd.read_csv(f"{dir}/{file}", sep=",")
+            person = file.split('_')[0]  # Modify this line to match your filename format
+            if person not in dataset:
+                dataset[person] = {"train": [], "test": []}
             if "Training" in file:
-                dataset["train"].append(df)
+                dataset[person]["train"].append(df)
             elif "Testing" in file:
-                dataset["test"].append(df)
+                dataset[person]["test"].append(df)
         except Exception as e:
             print(f"Failed to load {file}: {e}")
-    dataset["train"] = pd.concat(dataset["train"], ignore_index=True)
-    dataset["test"] = pd.concat(dataset["test"], ignore_index=True)
-    for key in dataset:
-        print(key, dataset[key].shape)
+    for person in dataset:
+        dataset[person]["train"] = pd.concat(dataset[person]["train"], ignore_index=True)
+        dataset[person]["test"] = pd.concat(dataset[person]["test"], ignore_index=True)
+        print(person, "Train:", dataset[person]["train"].shape, "Test:", dataset[person]["test"].shape)
     return dataset
 
 def get_train_dataset(data: pd.DataFrame) -> pd.DataFrame:
     pipe = get_pipeline(data)
-    processed_data = pipe.fit_transform(data).dropna()
-    print(processed_data.head())
+    processed_data = pipe.fit_transform(data).fillna(0)
     assert processed_data.isna().sum().sum() == 0, "There are missing values in the dataset"
-
     return processed_data
 
 def get_any_dataset(data: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
     pipe = get_pipeline(train)
-    processed_data = pipe.fit_transform(data).dropna()
-
+    processed_data = pipe.fit_transform(data).fillna(0)
     assert processed_data.isna().sum().sum() == 0, "There are missing values in the dataset"
-
     return processed_data
 
 def get_tuning_dataset(data: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
     merged = pd.concat([data, train], ignore_index=True)
     pipe = get_pipeline(train)
-    processed_data = pipe.fit_transform(merged).dropna()
-
+    processed_data = pipe.fit_transform(merged).fillna(0)
     assert processed_data.isna().sum().sum() == 0, "There are missing values in the dataset"
-
     return processed_data
 
 def combine_keys(dataset: dict) -> pd.DataFrame:
@@ -195,18 +191,29 @@ def fit_navigator_model(model, X, y):
 
     X_copy = create_navigation_features(X_copy)
     y_copy = calculate_direction(y_copy)
-    X_copy = get_previous_direction(X_copy, y_copy)
+    X_copy = get_previous_directions(X_copy, y_copy)
 
-    model.fit(X_copy, y_copy)
+    X_train, X_temp, y_train, y_temp = train_test_split(X_copy, y_copy, test_size=0.33, random_state=42, shuffle= True)
+
+    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42, shuffle= True)
+
+    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], callbacks = [lightgbm.early_stopping(5)])
+
+    y_pred = model.predict(X_test)
+
+    test_accuracy = np.sum(y_pred == y_test) / len(y_test)
+
+    print(f"Test accuracy: {test_accuracy * 100:.2f} %")
+
     return model
 
 def get_navigator_prediction(model, X):
     X_copy = X.copy()
     X_copy = create_navigation_features(X_copy)
     if "CGM(1)" in X_copy.columns:
-        X_copy = get_previous_direction(X_copy, X_copy["CGM(1)"])
+        X_copy = get_previous_directions(X_copy, X_copy["CGM(1)"])
     else:
-        X_copy = get_previous_direction(X_copy, X_copy["wCGM(1)"])
+        X_copy = get_previous_directions(X_copy, X_copy["wCGM(1)"])
     y_pred = model.predict(X_copy)
     return y_pred
 
@@ -216,8 +223,9 @@ def calculate_direction(y):
     nY = y_diff.apply(lambda x: 1 if x >= 0 else -1)
     return nY
 
-def create_navigation_features(X):
-    
+def create_navigation_features(X, n_lags = 5):
+    available_lags = min(n_lags, len(X))
+
     X["hour_sin"] = np.sin(2 * np.pi * X["hour"] / 23.0)
     X["hour_cos"] = np.cos(2 * np.pi * X["hour"] / 23.0)
 
@@ -229,10 +237,26 @@ def create_navigation_features(X):
     X['is_night'] = X['hour'].apply(lambda x: 1 if x >= 20 else 0)
     X['is_afternoon'] = X['hour'].apply(lambda x: 1 if x >= 12 and x < 20 else 0)
     X['is_evening'] = X['hour'].apply(lambda x: 1 if x >= 16 else 0)
+
+    for i in range(1, available_lags+1):
+        X[f'hour_lag_{i}'] = X['hour'].shift(i)
+        X[f'minute_lag_{i}'] = X['minute'].shift(i)
+    
+    for i in range(available_lags+1, n_lags+1):
+        X[f'hour_lag_{i}'] = 0
+        X[f'minute_lag_{i}'] = 0
+
     return X
 
-def get_previous_direction(X, y):
-    X["prev_direction"] = y.shift(1)
-    X["prev_direction"] = X["prev_direction"].fillna('steady')
-    X["prev_direction"] = X["prev_direction"].map({'steady': 0, 'up': 1, 'down': -1})
+def get_previous_directions(X, y, n_directions = 36):
+    available_directions = min(n_directions, len(y))
+    
+    for i in range(1, available_directions+1):
+        X[f"prev_direction_{i}"] = y.shift(i)
+        X[f"prev_direction_{i}"] = X[f"prev_direction_{i}"].fillna('steady')
+        X[f"prev_direction_{i}"] = X[f"prev_direction_{i}"].map({'steady': 0, 'up': 1, 'down': -1})
+
+    for i in range(available_directions+1, n_directions+1):
+        X[f"prev_direction_{i}"] = 0
+
     return X

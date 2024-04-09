@@ -16,7 +16,7 @@ from losses import criterion
 import numpy as np
 import pandas as pd
 
-from utils import calculate_bands, calculate_extreme_CGM, fit_navigator_model, get_navigator_prediction, step_transform
+from utils import calculate_extreme_CGM, fit_navigator_model, get_navigator_prediction, step_transform
 
 class HybridModel:
     def __init__(self, use_navigator = True, use_adaptive_weight = True):
@@ -135,16 +135,16 @@ class HybridModel:
             T = X.copy()
             X["direction"] = get_navigator_prediction(self.model["Navigator"], X)
 
-        if self.use_adaptive_weight:
-            median = self.quantile["Median"].predict(T)
+            if self.use_adaptive_weight:
+                median = self.quantile["Median"].predict(T)
 
-            center = T['upper_band'] - (T['upper_band'] - T['lower_band']) / 2
+                center = T['upper_band'] - (T['upper_band'] - T['lower_band']) / 2
 
-            center_distance = abs(center - median)
+                center_distance = abs(center - median)
 
-            wt = 1 + (1 / (center_distance  + 1e-10))
+                wt = 1 + (1 / (center_distance  + 1e-10))
 
-            X["direction"] = X["direction"] * wt
+                X["direction"] = X["direction"] * wt
 
         if tune:
             lgbm_base_params = self.optimize_lgbm_params(X, y)
@@ -167,7 +167,8 @@ class HybridModel:
         if eval:
             assert (testX is not None and testY is not None), "testX and testY must be provided for evaluation"
 
-            testX['direction'] = get_navigator_prediction(self.model["Navigator"], testX).astype(float)
+            if self.use_navigator:
+                testX['direction'] = get_navigator_prediction(self.model["Navigator"], testX).astype(float)
             
             base_pred = self.model["Base"].predict(testX)
             residuals_pred = self.model["Residuals"].predict(testX)
@@ -196,7 +197,7 @@ class HybridModel:
                     confi_pred = self.quantile[quantile].predict(last_row.drop(columns = ["direction"]))
                     confi_forecasts[quantile].append(confi_pred)
 
-            if self.use_adaptive_weight:
+            if self.use_navigator and self.use_adaptive_weight:
                 median = self.quantile["Median"].predict(last_row.drop(columns = ["direction"]))
                 center = last_row['upper_band'] - (last_row['upper_band'] - last_row['lower_band']) / 2
                 center_distance = abs(center - median)

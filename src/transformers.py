@@ -27,9 +27,6 @@ class DateTransformer(BaseTransformer):
         return X
 
     def transform(self, X, y=None) -> pd.DataFrame:
-        X[self.attribute] = pd.to_datetime(
-            X[self.attribute], format="%d-%b-%Y %H:%M:%S"
-        )
         X = self.datetime_to_bins(X)
         return X
 
@@ -68,7 +65,10 @@ class MovingAverageTransformer(BaseTransformer):
                 X[f"wCGM({m})"] = X["CGM"].shift(self.shift).rolling(window=m).apply(lambda x: np.average(x, weights=weights[::-1]), raw=True)
             else:
                 X[f"CGM({m})"] = X["CGM"].shift(self.shift).rolling(window=m).mean()
-        return X.dropna()
+       
+        X.ffill(inplace=True)
+        
+        return X
 
 class FeatureTransformer(BaseTransformer):
     def __init__(self, shift = 1, window = 24, std = 3, length = 6):
@@ -100,7 +100,7 @@ class FeatureTransformer(BaseTransformer):
         return X
 
     def transform(self, X, y=None):
-        
+        X = X.copy()
         X["cgm_velo"] = self.calculate_velocity(X)
         X['change'] = self.calculate_change(X)
         X['upper_band'], X['lower_band'] = self.calculate_bands(X)
